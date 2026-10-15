@@ -155,3 +155,15 @@ class Coach:
             self.nnet.save_checkpoint(
                 folder=self.args.checkpoint, filename="best.pth.tar")
             print(f"Saved checkpoint iter{i}.pth.tar")
+            
+            # Upload len Google Drive
+            upload_drive = self.args.get("upload_drive", False)
+            if upload_drive:
+                import shutil
+                drive_folder = self.args.get("drive_folder", "/content/drive/MyDrive/CoVua_Checkpoints")
+                os.makedirs(drive_folder, exist_ok=True)
+                checkpoint_path = os.path.join(self.args.checkpoint, f"iter{i}.pth.tar")
+                dest_path = os.path.join(drive_folder, f"iter{i}.pth.tar")
+                print(f"  [DRIVE] Uploading to Google Drive...")
+                shutil.copy2(checkpoint_path, dest_path)
+                print(f"  [DRIVE] Uploaded: {dest_path}")

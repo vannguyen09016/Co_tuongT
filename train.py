@@ -47,6 +47,8 @@ def get_args() -> dotdict:
     parser.add_argument("--save-every", type=int, default=5, help="Save checkpoint every N eps (default: 5)")
     parser.add_argument("--train-every", type=int, default=10, help="Train every N eps for streaming (default: 10)")
     parser.add_argument("--auto-save-minutes", type=int, default=10, help="Auto-save checkpoint every N minutes (default: 10, 0=off)")
+    parser.add_argument("--upload-drive", action="store_true", help="Upload checkpoint to Google Drive after each iteration")
+    parser.add_argument("--drive-folder", type=str, default="/content/drive/MyDrive/CoVua_Checkpoints", help="Google Drive folder for checkpoints")
     args = parser.parse_args()
     return dotdict(vars(args))
 
