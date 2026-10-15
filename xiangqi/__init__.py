@@ -1,0 +1,1 @@
+"""Xiangqi (Cờ Tướng) game package."""
