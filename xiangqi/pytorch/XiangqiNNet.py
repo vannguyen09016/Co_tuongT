@@ -62,6 +62,17 @@ class ResBlock(nn.Module):
         out = F.relu(out, inplace=True)
         return out
 
+    def forward_with_checkpoint(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward với gradient checkpointing - tiết kiệm VRAM."""
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = F.relu(out, inplace=True)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = out + self.skip(x)
+        out = F.relu(out, inplace=True)
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Main network
@@ -159,18 +170,29 @@ class XiangqiNNet(nn.Module):
         nn.init.uniform_(self.value_fc2.weight, -1e-3, 1e-3)
         nn.init.zeros_(self.value_fc2.bias)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, use_checkpoint: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             x: tensor (B, in_channels, board_rows, board_cols).
+            use_checkpoint: nếu True, dùng gradient checkpointing để tiết kiệm VRAM.
         Returns:
             pi_logits: (B, action_size) raw logits (KHÔNG softmax).
             v: (B, 1) trong [-1, 1].
         """
         # Backbone
         out = self.conv_input(x)
-        for rb in self.res_blocks:
-            out = rb(out)
+        if use_checkpoint:
+            # Gradient checkpointing: chia res_blocks thành từng checkpoint
+            for i, rb in enumerate(self.res_blocks):
+                if i % 2 == 0:
+                    out = torch.utils.checkpoint.checkpoint(
+                        rb.forward_with_checkpoint, out, use_reentrant=False
+                    )
+                else:
+                    out = rb(out)
+        else:
+            for rb in self.res_blocks:
+                out = rb(out)
 
         # Policy head
         p = self.policy_conv(out)

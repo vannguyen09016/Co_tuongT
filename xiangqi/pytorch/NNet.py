@@ -98,21 +98,47 @@ class NNetWrapper:
         self.nnet.train()
         total_loss = 0.0
         steps = 0
+        import gc
+        accum = getattr(self.args, 'accumulate_steps', 1)
+        
+        # Mixed precision (FP16) cho tiết kiệm VRAM
+        use_amp = self.device.type == 'cuda'
+        scaler = torch.amp.GradScaler('cuda') if use_amp else None
+        
+        # Gradient Checkpointing cho GPU nhỏ (< 6GB)
+        use_checkpoint = self.device.type == 'cuda'
+        
         for _ in range(epochs):
             epoch_loss = 0.0
             n_batches = 0
+            accum_loss = 0
             for b_x, b_pi, b_v in loader:
-                self.optimizer.zero_grad()
-                pi_pred, v_pred = self.nnet(b_x)
-                # Policy loss: NLL (pi_pred là log_softmax)
-                # b_pi: raw distribution pi (sum=1)
-                # loss = - sum(b_pi * pi_pred)
-                policy_loss = -torch.sum(b_pi * pi_pred, dim=1).mean()
-                value_loss = F.mse_loss(v_pred.view(-1), b_v.view(-1))
-                loss = policy_loss + value_loss
-                loss.backward()
-                self.optimizer.step()
-                epoch_loss += float(loss.item())
+                self.optimizer.zero_grad(set_to_none=True)
+                
+                if use_amp:
+                    with torch.amp.autocast('cuda'):
+                        pi_pred, v_pred = self.nnet(b_x, use_checkpoint=use_checkpoint)
+                        policy_loss = -torch.sum(b_pi * pi_pred, dim=1).mean()
+                        value_loss = F.mse_loss(v_pred.view(-1), b_v.view(-1))
+                        loss = (policy_loss + value_loss) / accum
+                    scaler.scale(loss).backward()
+                    if (n_batches + 1) % accum == 0:
+                        scaler.step(self.optimizer)
+                        scaler.update()
+                        self.optimizer.zero_grad(set_to_none=True)
+                else:
+                    pi_pred, v_pred = self.nnet(b_x, use_checkpoint=use_checkpoint)
+                    policy_loss = -torch.sum(b_pi * pi_pred, dim=1).mean()
+                    value_loss = F.mse_loss(v_pred.view(-1), b_v.view(-1))
+                    loss = (policy_loss + value_loss) / accum
+                    loss.backward()
+                    if (n_batches + 1) % accum == 0:
+                        self.optimizer.step()
+                        self.optimizer.zero_grad(set_to_none=True)
+                
+                del b_x, b_pi, b_v, pi_pred, v_pred, loss, policy_loss, value_loss
+                if self.device.type == 'cuda':
+                    torch.cuda.empty_cache()
                 n_batches += 1
                 steps += 1
             total_loss += epoch_loss / max(1, n_batches)

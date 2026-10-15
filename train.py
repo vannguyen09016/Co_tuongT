@@ -85,10 +85,36 @@ def main():
     elif args.cuda:
         try:
             import torch
-            torch.cuda.set_per_process_memory_fraction(0.8)
-            if args.batch_size > 32:
-                args.batch_size = 32
-            print("CUDA memory limited to 80%")
+            # Kiem tra GPU memory
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0)
+                total_mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                print(f"GPU: {gpu_name} ({total_mem:.1f} GB)")
+                
+                # Tu dong giam cau hinh cho GPU nho
+                if total_mem < 6:  # GPU < 6GB
+                    torch.cuda.set_per_process_memory_fraction(0.30)
+                    if args.batch_size > 1:
+                        args.batch_size = 1
+                    if args.num_channels > 4:
+                        args.num_channels = 4
+                    if args.num_res_blocks > 1:
+                        args.num_res_blocks = 1
+                    if args.num_mcts_sims > 5:
+                        args.num_mcts_sims = 5
+                    if args.epochs > 1:
+                        args.epochs = 1
+                    # accum khong giup forward pass, chi giu nguyen
+                    args.accumulate_steps = 1
+                    print(f"Ultra-minimal: batch={args.batch_size}, channels={args.num_channels}, res={args.num_res_blocks}, epochs={args.epochs}, mcts={args.num_mcts_sims}")
+                elif total_mem < 10:  # GPU 6-10GB
+                    torch.cuda.set_per_process_memory_fraction(0.8)
+                    if args.batch_size > 16:
+                        args.batch_size = 16
+                else:  # GPU > 10GB
+                    torch.cuda.set_per_process_memory_fraction(0.85)
+                    
+            print("CUDA memory limited to 70-85%")
         except Exception as e:
             print(f"Warning: Could not set CUDA memory limit: {e}")
 
