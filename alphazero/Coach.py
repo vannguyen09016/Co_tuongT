@@ -82,12 +82,19 @@ class Coach:
         """Vòng lap chính với streaming training."""
         from alphazero.MCTS import MCTS
         import gc
+        import time
         
         # Auto-save interval (0 = off)
         save_every = int(self.args.get("save_every", 0))
-        # Train sau moi N episodes de tranh tràn RAM (0 = train cuoi iteration)
+        # Train sau moi N episodes de tranh tran RAM (0 = train cuoi iteration)
         train_every = int(self.args.get("train_every", 10))
+        # Auto-save theo thoi gian (phut), 0 = off
+        auto_save_minutes = int(self.args.get("auto_save_minutes", 10))
         total_eps = int(self.args.num_eps)
+        
+        # Thoi gian bat dau de auto-save theo phut
+        start_time = time.time()
+        last_time_save = start_time
         
         for i in range(1, self.args.num_iters + 1):
             print(f"\n----- Iter {i}/{self.args.num_iters} -----")
@@ -119,6 +126,19 @@ class Coach:
                         filename=f"auto_iter{i}_ep{ep+1}.pth.tar"
                     )
                     gc.collect()
+                
+                # Auto-save theo thoi gian (phong disconnect Colab)
+                if auto_save_minutes > 0:
+                    current_time = time.time()
+                    if current_time - last_time_save >= auto_save_minutes * 60:
+                        elapsed_min = int((current_time - start_time) / 60)
+                        print(f"\n  [AUTO-SAVE] Time-based save after {elapsed_min} minutes...")
+                        self.nnet.save_checkpoint(
+                            folder=self.args.checkpoint, 
+                            filename=f"auto_time_{elapsed_min}min.pth.tar"
+                        )
+                        last_time_save = current_time
+                        gc.collect()
             
             # Train phan con lai neu co
             if len(examples) > 0:
